@@ -1,0 +1,242 @@
+---
+title: "SMProject"
+author: "Bo Huang, Zhichao Yuan"
+date: "December 1, 2018"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(MASS)
+```
+
+# Project 1
+
+## Question 1 [Due 10/10/2018]
+Ethereum is a decentralized network based on blockchain technic. A token, by the rule of blockchain, is proved and shared by all the nodes connected. For this reason, it is used to develop decentralized applications because blockchain provide s sharing data within nodes with great safety and consistency. An ERC20 Token is developed by Ethereum project following a list of standers to be shared, exchanged or transferred in the Ethereum platform.
+
+Find the distribution of how many times a user 1 - buys, 2 - sells a token. Which discrete distribution type fits these distributions best? Estimate distribution parameters.
+
+<font size=5>Step 0. Select token file</font>
+
+Group members' IDs: bxh160630&zxy180004
+
+(160630+180004)/20=14
+
+So, we use the 14th token, qtum(networkqtumTX.txt).
+
+<font size=5>Step 1. Preprocessing Data</font>
+
+<font size=4>QTUM Token Information:</font>
+
+Circulating Supply: 88,948,832 QTUM
+
+Decimals:18 
+
+Hence, there can be numbers as big as 88,948,832*10^18
+
+We use following code to preprocess data.
+```{r}
+#Read data from file networkqtumTX.txt
+tokenData<-read.table(file="networkqtumTX.txt", sep=' ', header=FALSE)
+#filter extreme outliers
+totalAmount <- 88948832
+subunit <- 10^18
+totalSupply <- (totalAmount * subunit)
+message("Outlier data indices:")
+which(tokenData[,4]>totalSupply)
+message("Outlier data:")
+tokenData[which(tokenData[,4]>totalSupply),]
+
+filteredData<-tokenData[which(tokenData[,4]<=totalSupply),]
+```
+
+<font size=5>Step 2. Find the distribution of times of buying token</font>
+
+In order to find the distribution best fit the data, we first choose the distribution that roughly fit data in shape, that are exponential and weibull distributions. Then we manually calculate the parameters of each distribution and compare them with parameters given by the fit function. We find that the parameters of weibull are more close which means we consider weibull distribution is more fit.
+
+The fitdistr function is used to fit the data set to the distribution.
+
+```{r}
+#Buy distribution
+freqBuyer <- table(filteredData[2])
+freqBuyerFrame <- as.data.frame(freqBuyer)
+freqBuy <- table(freqBuyerFrame[2])
+barplot(freqBuy)
+
+#Method of Moments Estimator for Exponential Distribution
+lambdaExpoBuy <- 1/mean(freqBuy)
+message("Manually lambda estimator:\n", lambdaExpoBuy)
+
+#fitdistr function to fit Exponential Distribution
+expoParsBuy <- fitdistr(freqBuy, "exponential")
+lambdaExpoBuyFit <- expoParsBuy$estimate["rate"]
+message("fitdistr() function lambda:\n", lambdaExpoBuyFit)
+
+
+#Method of Moments Estimator for Weibull Distribution
+meanBuy <- mean(freqBuy)
+varBuy <- var(freqBuy)
+shape_weibull_buy <- function(shape){return(gamma(1+2/shape)/gamma(1+1/shape)^2 - 1 - varBuy/meanBuy^2)}
+shapeBuy <- uniroot(shape_weibull_buy,c(0.02,50))$root
+scaleBuy <- meanBuy/gamma(1+1/shapeBuy)
+message("Manually shape estimator:\n", shapeBuy, "\nscale estimator:\n", scaleBuy)
+
+#fitdistr function to fit Weibull Distribution
+WeibullParsBuy <- fitdistr(freqBuy, "weibull")
+shapeWeibullBuyFit <- WeibullParsBuy$estimate["shape"]
+scaleWeibullBuyFit <- WeibullParsBuy$estimate["scale"]
+message("fitdistr() function shape:\n", shapeWeibullBuyFit, "\nscale:\n", scaleWeibullBuyFit)
+```
+
+<font size=5>Step 3. Find the distribution of times of selling token</font>
+```{r}
+#Sell distribution
+freqSeller <- table(filteredData[1])
+freqSellerFrame <- as.data.frame(freqSeller)
+freqSell <- table(freqSellerFrame[2])
+barplot(freqSell)
+
+#Method of Moments Estimator for Exponential Distribution
+lambdaExpoSell <- 1 / mean(freqSell)
+message("Manually lambda estimator:\n", lambdaExpoSell)
+
+#fitdistr function to fit Exponential Distribution
+expoParsSell <- fitdistr(freqSell, "exponential")
+lambdaExpoSellFit <- expoParsSell$estimate["rate"]
+message("fitdistr() function lambda:\n", lambdaExpoSellFit)
+
+
+#Method of Moments Estimator for Weibull Distribution
+meanSell <- mean(freqSell)
+varSell <- var(freqSell)
+shape_weibull_sell <- function(shape){return(gamma(1+2/shape)/gamma(1+1/shape)^2 - 1 - varSell/meanSell^2)}
+shapeSell <- uniroot(shape_weibull_sell,c(0.02,50))$root
+scaleSell <- meanSell/gamma(1+1/shapeSell)
+message("Manually shape estimator:\n", shapeSell, "\nscale estimator:\n", scaleSell)
+
+#fitdistr function to fit Weibull Distribution
+WeibullParsSell <- fitdistr(freqSell, "weibull")
+shapeWeibullSellFit <- WeibullParsSell$estimate["shape"]
+scaleWeibullSellFit <- WeibullParsSell$estimate["scale"]
+message("fitdistr() function shape:\n", shapeWeibullSellFit, "\nscale:\n", scaleWeibullSellFit)
+```
+## Question 2
+We try to find out the relation between the token price and the frequence of transactions for each layer.
+
+The pearson correlation is used to calculate the correlation of the token price and the frequence of transactions.
+
+```{r}
+# filter data from outliers
+tokenData<-read.table(file="networkqtumTX.txt", sep=' ', header=FALSE)
+filteredData<-tokenData[which(tokenData[,4]>=10^15),]
+filteredData<-filteredData[which(filteredData[,4]<=10^23),]
+
+#filter out data not in price data
+dataTimeRelated<-filteredData[which(filteredData[,3]>=1495602000),]
+
+corVector<-c();
+
+for (layerIndex in c(1:100)) {
+  # divide into layers
+  eachLayerDataTemp<-dataTimeRelated[which(dataTimeRelated[,4]<=layerIndex * 10^21),]
+  eachLayerData<-eachLayerDataTemp[which(eachLayerDataTemp[,4]>=(layerIndex-1) * 10^21),]
+
+  # layer1 feature
+  cutResult<-cut(eachLayerData$V3,breaks=seq(1495602000,1531717200,86400))
+  cutResult[1]
+  transactionFreqEachDayWithBin<-table(cut(eachLayerData$V3,breaks=seq(1495602000,1531717200,86400)))
+  
+  # price data
+  priceData<-read.table(file="qtum", sep='\t', header=TRUE)
+  
+  # sort priceData
+  priceDateTimeOrdered<-priceData[order(as.numeric(as.POSIXct(priceData$Date, format="%m/%d/%Y"))),]
+  transactionFreqEachDayTemp<-as.data.frame(transactionFreqEachDayWithBin)
+  transactionFreqEachDay<-transactionFreqEachDayTemp$Freq
+  
+  #price feature
+  pricefeature<-priceData$Open
+
+  #output plot
+  plot(as.numeric(as.POSIXct(priceDateTimeOrdered$Date, format="%m/%d/%Y")),transactionFreqEachDay,type = "l")
+
+  #correlation in different layers' data  
+  corVector<-c(corVector,cor(transactionFreqEachDay,pricefeature,method = "pearson"))
+
+}
+
+plot(as.numeric(as.POSIXct(priceDateTimeOrdered$Date, format="%m/%d/%Y")),pricefeature,type = "l")
+
+#show #correlation in different layers' data 
+corVector
+
+```
+##Conclusion
+The frequece of transaction and the price according to the time line seem unlikely be correlated for most of the layers. The largest correlation calculated is 0.2138896054 of layer 65. It is still considered as uncorrelated and the data size of layer is small which is not enough for fitting. There are several possible reasons for that. One is this token is relatively new released and do not own people's credit. As we can see, most of the transactions are of small amount and the price is low, around 4 ollars. These transactions are not good activities for investment. The other is the price data size is small, only 366 points for one year, which seems hard to make good obervation. 
+
+
+# Project 2
+
+## Question 1 [Due 11/31/2018]
+
+We denote the token price in dolar as Pt for the tth day. Simple price return is given as $\frac{P_t-P_{t-1}}{P_{t-1}}$.
+
+Extract at least three features from the token network at day t−1 and create a multiple linear regression model to explain price return on day t. In this task, you can choose to extract features from a single layer computed in project 1, or you can use all network data. If you use a layer approach, you can build the model on data from a single layer only.
+
+You are free to choose any feature (regressor). Your features can be in terms of numbers (x1=number of transactions), percentages (x1=percentage of investors who bought more than 10 tokens), etc. Similarly, you could transform your regressors (x1=square root of number of transactions).
+
+In some tokens you may not find three useful features to use in the model. In that case, please explain the candidate features that you tried. If needed, you can create a single regressor model as well. Similarly, you can go beyond three regressors.
+
+Finding which features to extract from a dataset is called feature engineering.
+
+Present your regression model, explain residuals and discuss your findings. Explain the adequacy of your regression model.
+
+```{r}
+regressionInput <- data.frame(y=double(),x1=double(),x2=double(),x3=double(),stringsAsFactors=FALSE) 
+for (i in 1:((1525651200-1495602000)/86400)) {
+  dataEachDay <- dataTimeRelated[which(dataTimeRelated[,3] >= (1499299200 + 86400 * (i - 1))),]
+  dataEachDay <- dataEachDay[which(dataEachDay[,3] < 1499299200 + 86400 * i),]
+  
+  # Feature 1 percentage10TokenBuyer<- nrow(buyAmount10)/nrow(buyAmount)
+  x1 <-0
+  if(nrow(dataEachDay) == 0){
+    x1 <-0
+  } else {
+    buyAmount <- aggregate(dataEachDay$V4, by=list(buyerID=dataEachDay$V2), FUN=sum)
+    nrow(buyAmount)
+    buyAmount10<-buyAmount[which(buyAmount[,2] >= 10^19),]
+    percentage10TokenBuyer<- nrow(buyAmount10)/nrow(buyAmount)
+    x1 <- percentage10TokenBuyer
+  }
+  
+  # Feature 2 number of transactions
+  x2 <- nrow(dataEachDay)
+  
+  # Feature 3 previous day priceReturn
+  priceDateTimeOrdered <- priceData[order(as.numeric(as.POSIXct(priceData$Date, format="%m/%d/%Y"))),]
+  pricePrevious2Day <- priceDateTimeOrdered[which(as.numeric(as.POSIXct(priceDateTimeOrdered$Date, format="%m/%d/%Y")) >= (1499299200 + 86400 * (i - 3))),]
+  pricePrevious2Day <- pricePrevious2Day[which(as.numeric(as.POSIXct(pricePrevious2Day$Date, format="%m/%d/%Y")) < 1499299200 + 86400 * (i - 2)),]
+  pricePreviousDay <- priceDateTimeOrdered[which(as.numeric(as.POSIXct(priceDateTimeOrdered$Date, format="%m/%d/%Y")) >= (1499299200 + 86400 * (i - 2))),]
+  pricePreviousDay <- pricePreviousDay[which(as.numeric(as.POSIXct(pricePreviousDay$Date, format="%m/%d/%Y")) < 1499299200 + 86400 * (i - 1)),]
+  x3 <- (pricePreviousDay$Open-pricePrevious2Day$Open)/pricePrevious2Day$Open
+  
+  # True Price y
+  priceEachDay <- priceDateTimeOrdered[which(as.numeric(as.POSIXct(priceDateTimeOrdered$Date, format="%m/%d/%Y")) >= (1499299200 + 86400 * (i - 1))),]
+  priceEachDay <- priceEachDay[which(as.numeric(as.POSIXct(priceEachDay$Date, format="%m/%d/%Y")) < 1499299200 + 86400 * i),]
+  y <- (priceEachDay$Open-pricePreviousDay$Open)/pricePreviousDay$Open
+  
+  # store "y","x1","x2","x3"
+  df<-data.frame(y, x1, x2, x3)
+  names(df)<-c("y","x1","x2","x3")
+  regressionInput <- rbind(regressionInput, df)
+
+}
+
+# Multiple Linear Regression
+fit <- lm(y ~ x1 + x2 + x3, data=regressionInput)
+fit2 <- lm(y ~ x1 + x2, data=regressionInput)
+anova(fit, fit2)
+summary(fit) # show results
+```
+
